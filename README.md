@@ -33,7 +33,18 @@ python -m http.server 8000 --bind 127.0.0.1 --directory ..\admin
 
 `DEBUG=true` is for local use only. It prints login codes in the server terminal and is rejected unless `ENVIRONMENT=local` or `development`. For real email, configure `EMAIL_PROVIDER=resend`, `EMAIL_API_KEY`, and a verified `EMAIL_SENDER`. Live startup requires `ENVIRONMENT=production`, `DEBUG=false`, explicit allowed origins, email credentials, and Cloudinary credentials.
 
-The user site is Stage 9 and is not implemented yet; port 8001 is reserved for it.
+Interactive API documentation (`/docs`, `/redoc`, `/openapi.json`) is enabled locally and in development. It is disabled by default when `ENVIRONMENT=production`; set `ENABLE_DOCS=true` only temporarily when you need to test it on Render.
+
+## Tests
+
+Install development dependencies with `python -m pip --python .venv install -r requirements-dev.txt`. Set `TEST_DATABASE_URL` to a separate test database, such as a dedicated Neon branch. The test suite skips when this setting is absent and refuses to run if it matches `DATABASE_URL`.
+
+```powershell
+pytest
+ruff check .
+```
+
+The customer website is implemented in `../user` and runs on port 8001; see `../user/README.md` for details.
 
 ## Database changes
 

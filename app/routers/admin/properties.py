@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query as QueryParam
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from app.core.dependencies import require_admin
 from app.database import get_db
 from app.models.property import Property
-from app.schemas.property import PropertyInput, SoldInput
+from app.schemas.property import PropertyInput, SoldInput, _validate_optional_email, _validate_optional_phone, _trim_text
 from app.services.property_service import delete_property, get_property, list_properties, property_dict, save_property, set_available, set_sold
 
 router = APIRouter(prefix="/api/admin/properties", tags=["admin properties"], dependencies=[Depends(require_admin)])
@@ -19,6 +19,26 @@ class PropertyStatus(BaseModel):
     buyer_email: str | None = None
     sold_at: datetime | None = None
     sale_price: float | None = Field(default=None, ge=0)
+
+    @field_validator("buyer_name", mode="before")
+    @classmethod
+    def trim_buyer_name(cls, value):
+        return _trim_text(value)
+
+    @field_validator("buyer_phone", mode="before")
+    @classmethod
+    def validate_buyer_phone(cls, value):
+        return _validate_optional_phone(value, "buyer phone number")
+
+    @field_validator("buyer_whatsapp_number", mode="before")
+    @classmethod
+    def validate_buyer_whatsapp(cls, value):
+        return _validate_optional_phone(value, "buyer WhatsApp number")
+
+    @field_validator("buyer_email", mode="before")
+    @classmethod
+    def validate_buyer_email(cls, value):
+        return _validate_optional_email(value)
 
 @router.get("")
 def properties(property_type: str | None = None, status: str | None = None, min_price: float | None = None, max_price: float | None = None, search: str | None = None, sort: str = "newest", page: int = QueryParam(1, ge=1), page_size: int = QueryParam(20, ge=1, le=100), db: Session = Depends(get_db)):

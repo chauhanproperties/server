@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.query import Query
 from app.models.property import Property
 from app.services.email_service import send_email
-from app.services.query_service import list_queries, query_dict, set_query_status
+from app.services.query_service import list_queries, query_counts, query_dict, set_query_status
 from app.services.whatsapp_service import build_link
 from app.schemas.query import EmailReply
 
@@ -31,7 +31,8 @@ def get_query(query_id: int, db: Session = Depends(get_db)):
     item = db.scalar(select(Query).options(joinedload(Query.customer), joinedload(Query.property)).where(Query.id == query_id))
     if not item:
         raise HTTPException(404, "Query not found")
-    return query_dict(item)
+    count = query_counts(db, [item.customer_id]).get(item.customer_id, 0)
+    return query_dict(item, count)
 
 @router.patch("/{query_id}/resolve")
 def resolve(query_id: int, db: Session = Depends(get_db)):

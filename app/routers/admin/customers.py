@@ -5,7 +5,6 @@ from app.core.dependencies import require_admin
 from app.database import get_db
 from app.models.customer import Customer
 from app.models.query import Query
-from app.models.property import Property
 from app.schemas.customer import CustomerUpdate
 
 router = APIRouter(prefix="/api/admin/customers", tags=["admin customers"], dependencies=[Depends(require_admin)])

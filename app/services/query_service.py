@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 from app.models.customer import Customer
-from app.models.property import Property
 from app.models.query import Query
 from app.services.customer_service import find_or_create
 
@@ -30,12 +29,23 @@ def list_queries(db: Session, status: str | None = None, property_id: int | None
     stmt = stmt.order_by(Query.raised_at.asc() if sort == "oldest" else Query.raised_at.desc())
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     rows = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": [query_dict(row) for row in rows], "page": page, "page_size": page_size, "total": total}
+    counts = query_counts(db, [row.customer_id for row in rows])
+    return {"items": [query_dict(row, counts.get(row.customer_id, 0)) for row in rows], "page": page, "page_size": page_size, "total": total}
 
-def query_dict(item: Query) -> dict:
+def query_counts(db: Session, customer_ids: list[int]) -> dict[int, int]:
+    if not customer_ids:
+        return {}
+    rows = db.execute(
+        select(Query.customer_id, func.count(Query.id))
+        .where(Query.customer_id.in_(set(customer_ids)))
+        .group_by(Query.customer_id)
+    ).all()
+    return {customer_id: count for customer_id, count in rows}
+
+def query_dict(item: Query, query_count: int) -> dict:
     c, p = item.customer, item.property
     return {"id": item.id, "status": item.status, "message": item.message, "raised_at": item.raised_at, "resolved_at": item.resolved_at,
-            "customer": {"id": c.id, "name": c.name, "phone": c.phone, "whatsapp_number": c.whatsapp_number, "email": c.email, "query_count": len(c.queries)} if c else None,
+            "customer": {"id": c.id, "name": c.name, "phone": c.phone, "whatsapp_number": c.whatsapp_number, "email": c.email, "query_count": query_count} if c else None,
             "property": {"id": p.id, "title": p.title, "property_type": p.property_type, "address": p.address, "price": float(p.price), "status": p.status} if p else None}
 
 def set_query_status(item: Query, resolved: bool) -> Query:

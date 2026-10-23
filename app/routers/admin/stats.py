@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -6,9 +8,10 @@ from app.database import get_db
 from app.models.customer import Customer
 from app.models.property import Property
 from app.models.query import Query
-from app.services.query_service import query_dict
+from app.services.query_service import query_counts, query_dict
 
 router = APIRouter(prefix="/api/admin", tags=["admin dashboard"], dependencies=[Depends(require_admin)])
+logger = logging.getLogger(__name__)
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
@@ -16,6 +19,7 @@ def dashboard(db: Session = Depends(get_db)):
         try:
             return read()
         except Exception:
+            logger.exception("Dashboard data query failed")
             db.rollback()
             return fallback
 
@@ -31,7 +35,10 @@ def dashboard(db: Session = Depends(get_db)):
         )
     )
     latest = safe(lambda: db.scalars(select(Query).options(joinedload(Query.customer), joinedload(Query.property)).where(Query.status == "new").order_by(Query.raised_at.desc()).limit(8)).unique().all())
-    latest_items = safe(lambda: [query_dict(item) for item in latest]) if latest is not None else None
+    counts = safe(lambda: query_counts(db, [item.customer_id for item in latest])) if latest is not None else {}
+    if counts is None:
+        counts = {}
+    latest_items = safe(lambda: [query_dict(item, counts.get(item.customer_id, 0)) for item in latest]) if latest is not None else None
     return {
         "new_queries": count(Query, Query.status == "new"),
         "resolved_queries": count(Query, Query.status == "resolved"),

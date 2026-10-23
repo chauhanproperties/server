@@ -31,10 +31,17 @@ class Settings:
     max_image_count: int = int(os.getenv("MAX_IMAGES_PER_PROPERTY", "10"))
     max_image_bytes: int = int(os.getenv("MAX_IMAGE_SIZE_MB", "5")) * 1024 * 1024
     public_sold_properties: bool = os.getenv("PUBLIC_SOLD_PROPERTIES", "true").lower() == "true"
+    enable_docs: bool | None = None
 
     def __post_init__(self) -> None:
         local_origins = "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8001,http://127.0.0.1:8001" if self.debug else ""
         object.__setattr__(self, "allowed_origins", _csv("ALLOWED_ORIGINS", local_origins))
+        docs_setting = os.getenv("ENABLE_DOCS")
+        if self.enable_docs is not None:
+            enable_docs = self.enable_docs
+        else:
+            enable_docs = docs_setting.lower() == "true" if docs_setting is not None else self.environment != "production"
+        object.__setattr__(self, "enable_docs", enable_docs)
 
     def validate(self) -> None:
         missing = [key for key, value in (("DATABASE_URL", self.database_url), ("ADMIN_EMAIL", self.admin_email), ("JWT_SECRET", self.jwt_secret)) if not value]

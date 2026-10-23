@@ -26,14 +26,15 @@ def upload_images(property_id: int, files: list[UploadFile] = File(...), db: Ses
         raise HTTPException(422, f"A property can have at most {settings.max_image_count} images.")
     made = []
     try:
+        highest_order = db.scalar(select(func.max(PropertyImage.display_order)).where(PropertyImage.property_id == property_id))
+        next_order = (highest_order + 1) if highest_order is not None else 0
         for file in files:
             data = file.file.read(settings.max_image_bytes + 1)
             result = upload_image(data, file.content_type)
-            highest_order = db.scalar(select(func.max(PropertyImage.display_order)).where(PropertyImage.property_id == property_id))
-            next_order = (highest_order + 1) if highest_order is not None else 0
             image = PropertyImage(property_id=property_id, image_url=result["secure_url"], public_id=result["public_id"], display_order=next_order)
             db.add(image)
             made.append((image, result["public_id"]))
+            next_order += 1
         db.commit()
         return [{"id": image.id, "image_url": image.image_url, "public_id": image.public_id, "display_order": image.display_order} for image, _ in made]
     except ValueError as exc:

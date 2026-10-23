@@ -20,7 +20,14 @@ async def lifespan(app: FastAPI):
     yield
     engine.dispose()
 
-app = FastAPI(title="Chauhan Properties API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Chauhan Properties API",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
+)
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
 
 for router in (auth.router, properties.router, images.router, queries.router, customers.router, stats.router, public_properties.router, public_queries.router):

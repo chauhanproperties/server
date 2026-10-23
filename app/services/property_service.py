@@ -4,9 +4,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.models.property import Property
-from app.models.property_image import PropertyImage
 from app.models.building_detail import BuildingDetail
-from app.models.customer import Customer
 from app.schemas.property import PropertyInput, SoldInput
 from app.services.customer_service import find_or_create
 from app.services.image_service import delete_image
@@ -47,9 +45,15 @@ def list_properties(db: Session, *, public: bool = False, property_type: str | N
         pattern = f"%{search.strip()}%"
         stmt = stmt.where(or_(Property.title.ilike(pattern), Property.address.ilike(pattern)))
     stmt = stmt.order_by(Property.price.asc() if sort == "price_asc" else Property.price.desc() if sort == "price_desc" else Property.created_at.asc() if sort == "oldest" else Property.created_at.desc())
-    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    rows = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": [property_dict(row, public=public) for row in rows], "page": page, "page_size": page_size, "total": total}
+    count_query = select(func.count()).select_from(stmt.order_by(None).subquery())
+    total_count = count_query.scalar_subquery()
+    rows = db.execute(
+        stmt.add_columns(total_count.label("total_count"))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).unique().all()
+    total = rows[0][1] if rows else db.scalar(count_query) or 0
+    return {"items": [property_dict(row[0], public=public) for row in rows], "page": page, "page_size": page_size, "total": total}
 
 def get_property(db: Session, property_id: int) -> Property | None:
     return db.execute(select(Property).options(joinedload(Property.images), joinedload(Property.building_details), joinedload(Property.buyer)).where(Property.id == property_id)).scalars().unique().first()

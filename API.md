@@ -71,7 +71,7 @@ Status request for available: `{ "status": "available" }` clears buyer, sold dat
 |---|---|---|---|
 | `POST /api/public/queries` | Public | `{ "name":"…", "phone":"…", "whatsapp_number":"…", "property_id":null, "email":null, "message":null }` | `{ "id": 1, "status":"new", "message":"Thank you. Your enquiry has been received." }` |
 
-Name, phone, and WhatsApp are required. Phone numbers are normalized; 10-digit Indian numbers receive the `+91` country prefix. The first customer name is retained; a missing customer email may be filled. At most 5 enquiries per visitor IP per hour are accepted by this single-process limiter. On Render, run Uvicorn with proxy headers enabled as shown in the server README so the limiter sees the visitor IP.
+Name, phone, and WhatsApp are required. Phone numbers are normalized; 10-digit Indian numbers receive the `+91` country prefix. The first customer name is retained; a missing customer email may be filled. Customer phone numbers are not verified. Check a customer's email before replying to it. At most 5 enquiries per visitor IP per hour are accepted by this single-process limiter. On Render, run Uvicorn with proxy headers enabled as shown in the server README so the limiter sees the visitor IP.
 
 ## Queries (admin)
 
