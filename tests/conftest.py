@@ -38,6 +38,3 @@ def db(test_engine):
         connection.close()
 
 
-@pytest.fixture(autouse=True)
-def require_test_database(test_engine):
-    return test_engine

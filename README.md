@@ -11,7 +11,7 @@ python -m venv --without-pip .venv
 python -m pip --python .venv install -r requirements.txt
 ```
 
-Keep credentials in `.env` (never commit it). Copy `.env.example` only when creating a new environment. The current local `.env` has database and Cloudinary values, a generated `JWT_SECRET`, and local debug settings for terminal-code login.
+Keep credentials in `.env` (never commit it). Copy `.env.example` only when creating a new environment. Configure `ADMIN_EMAIL` and a unique `ADMIN_PASSWORD` of at least 16 characters. The password is checked by the API and is never included in the frontend. Use a different password for each environment.
 
 Apply the initial schema migration:
 
@@ -31,13 +31,13 @@ Open `http://localhost:5000/health` and `http://localhost:5000/docs`. The admin 
 python -m http.server 8000 --bind 127.0.0.1 --directory ..\admin
 ```
 
-`DEBUG=true` is for local use only. It prints login codes in the server terminal and is rejected unless `ENVIRONMENT=local` or `development`. For real email, configure `EMAIL_PROVIDER=resend`, `EMAIL_API_KEY`, and a verified `EMAIL_SENDER`. Live startup requires `ENVIRONMENT=production`, `DEBUG=false`, explicit allowed origins, email credentials, and Cloudinary credentials.
+Admin login uses `ADMIN_EMAIL` plus the server-only `ADMIN_PASSWORD`; failed login attempts are rate limited. `DEBUG=true` is for local use only and is rejected unless `ENVIRONMENT=local` or `development`. To send query replies by email, configure `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, and `GMAIL_SENDER` for a Google OAuth client with the Gmail API `gmail.send` scope. Email is sent over Gmail API HTTPS, not SMTP. Production startup requires `ENVIRONMENT=production`, `DEBUG=false`, explicit allowed origins, a strong admin password, and Cloudinary credentials. Gmail settings are optional until email replies are enabled.
 
 Interactive API documentation (`/docs`, `/redoc`, `/openapi.json`) is enabled locally and in development. It is disabled by default when `ENVIRONMENT=production`; set `ENABLE_DOCS=true` only temporarily when you need to test it on Render.
 
 ## Tests
 
-Install development dependencies with `python -m pip --python .venv install -r requirements-dev.txt`. Set `TEST_DATABASE_URL` to a separate test database, such as a dedicated Neon branch. The test suite skips when this setting is absent and refuses to run if it matches `DATABASE_URL`.
+Install development dependencies with `python -m pip --python .venv install -r requirements-dev.txt`. Unit tests that do not touch the database run without database configuration. Database integration tests use `TEST_DATABASE_URL` for a separate test database, such as a dedicated Neon branch, and refuse to run if it matches `DATABASE_URL`.
 
 ```powershell
 pytest

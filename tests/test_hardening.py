@@ -1,11 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
 import inspect
 import io
 import secrets
 from threading import Barrier
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -16,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core import rate_limit
 from app.database import get_db
-from app.models import Customer, LoginCode, Property, PropertyImage, Query
+from app.models import Customer, Property, PropertyImage, Query
 from app.routers.admin import images as image_router
 from app.schemas.customer import CustomerInput
 from app.schemas.property import PropertyInput, SoldInput
@@ -36,10 +34,13 @@ def clear_limiter_state():
 def test_all_admin_routes_require_auth():
     from app.main import app
 
-    exempt = {"/api/admin/auth/request-code", "/api/admin/auth/verify-code"}
+    exempt = {"/api/admin/auth/login"}
     checked = 0
     # FastAPI can retain included routers lazily, so enumerate the final schema.
     schema = app.openapi()
+    assert "/api/admin/auth/login" in schema["paths"]
+    assert "/api/admin/auth/request-code" not in schema["paths"]
+    assert "/api/admin/auth/verify-code" not in schema["paths"]
     for route_path, path_item in schema["paths"].items():
         if not route_path.startswith("/api/admin"):
             continue
@@ -63,81 +64,116 @@ def test_api_docs_default_off_only_in_production(monkeypatch):
     assert Settings(environment="production").enable_docs is True
 
 
-def test_login_code_attempts_expiry_single_use_and_non_admin(db, monkeypatch):
+def test_admin_credentials_match_configured_email_and_password(monkeypatch):
     monkeypatch.setattr(
-        auth_service, "settings", SimpleNamespace(jwt_secret="test-secret-" * 4, admin_email="admin@example.test")
+        auth_service,
+        "settings",
+        SimpleNamespace(admin_email="admin@example.com", admin_password="strong-local-password-123"),
     )
-    sender = patch.object(auth_service, "send_login_code")
-    with sender as send:
-        assert auth_service.request_code(db, "not-admin@example.test") is False
-        assert send.call_count == 0
-        assert db.scalar(select(func.count(LoginCode.id))) == 0
-
-        now = datetime.now(timezone.utc)
-        expired = LoginCode(code_hash=auth_service._hash("12345678"), expires_at=now - timedelta(seconds=1), used=False)
-        db.add(expired)
-        db.commit()
-        assert auth_service.verify_code(db, "12345678") is False
-
-        exhausted = LoginCode(
-            code_hash=auth_service._hash("12345678"), expires_at=now + timedelta(minutes=10), used=False
-        )
-        db.add(exhausted)
-        db.commit()
-        for _ in range(5):
-            assert auth_service.verify_code(db, "87654321") is False
-        db.refresh(exhausted)
-        assert exhausted.used is True
-        assert auth_service.verify_code(db, "12345678") is False
-
-        valid = LoginCode(code_hash=auth_service._hash("87654321"), expires_at=now + timedelta(minutes=10), used=False)
-        db.add(valid)
-        db.commit()
-        assert auth_service.verify_code(db, "87654321") is True
-        assert auth_service.verify_code(db, "87654321") is False
+    assert auth_service.verify_admin_credentials("ADMIN@example.com", "strong-local-password-123")
+    assert not auth_service.verify_admin_credentials("other@example.com", "strong-local-password-123")
+    assert not auth_service.verify_admin_credentials("admin@example.com", "wrong-password")
 
 
-def test_login_request_limits_and_failed_email_preserves_old_code(db, monkeypatch):
+def test_admin_login_schema_rejects_blank_or_oversized_passwords():
+    from app.schemas.auth import AdminLogin
+
+    with pytest.raises(ValidationError):
+        AdminLogin(email="admin@example.com", password="   ")
+    with pytest.raises(ValidationError):
+        AdminLogin(email="admin@example.com", password="x" * 257)
+
+
+def test_production_settings_need_strong_admin_password_but_not_email_oauth(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://admin.example.com,https://www.example.com")
+    settings = Settings(
+        database_url="postgresql://db.example/app",
+        admin_email="admin@example.com",
+        admin_password="short",
+        jwt_secret="x" * 32,
+        debug=False,
+        environment="production",
+        cloudinary_cloud_name="cloud",
+        cloudinary_api_key="key",
+        cloudinary_api_secret="secret",
+    )
+    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+        settings.validate()
+
+    valid = Settings(
+        database_url="postgresql://db.example/app",
+        admin_email="admin@example.com",
+        admin_password="strong-local-password-123",
+        jwt_secret="x" * 32,
+        debug=False,
+        environment="production",
+        cloudinary_cloud_name="cloud",
+        cloudinary_api_key="key",
+        cloudinary_api_secret="secret",
+    )
+    valid.validate()
+
+
+def test_admin_password_login_issues_usable_token_and_rejects_bad_credentials(monkeypatch):
+    from app.config import settings
+    from app.core.security import decode_access_token
+    from app.routers.admin.auth import login
+    from app.schemas.auth import AdminLogin
+    from starlette.requests import Request
+
     monkeypatch.setattr(
-        auth_service, "settings", SimpleNamespace(jwt_secret="test-secret-" * 4, admin_email="admin@example.test")
+        auth_service,
+        "settings",
+        SimpleNamespace(admin_email=settings.admin_email, admin_password="strong-local-password-123"),
     )
-    db.execute(delete(LoginCode))
-    db.commit()
-    captured = []
-
-    def accept(_email, code):
-        captured.append(code)
-
-    with patch.object(auth_service, "send_login_code", side_effect=accept):
-        assert auth_service.request_code(db, "admin@example.test") is True
-        previous_code = captured[-1]
-        with patch.object(auth_service, "send_login_code", side_effect=RuntimeError("email unavailable")):
-            assert auth_service.request_code(db, "admin@example.test") is False
-        assert auth_service.verify_code(db, previous_code) is True
-
-    db.execute(delete(LoginCode))
-    db.commit()
-    captured.clear()
-    with patch.object(auth_service, "send_login_code", side_effect=accept):
-        for _ in range(3):
-            assert auth_service.request_code(db, "admin@example.test") is True
-        sent_before = len(captured)
-        assert auth_service.request_code(db, "admin@example.test") is False
-        assert len(captured) == sent_before
-
-    db.execute(delete(LoginCode))
-    db.commit()
-    now = datetime.now(timezone.utc)
-    db.add_all(
-        [
-            LoginCode(code_hash="unused", expires_at=now + timedelta(minutes=1), created_at=now - timedelta(hours=2))
-            for _ in range(10)
-        ]
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/admin/auth/login",
+            "query_string": b"",
+            "headers": [],
+            "client": ("198.51.100.20", 12345),
+            "server": ("testserver", 80),
+        }
     )
-    db.commit()
-    with patch.object(auth_service, "send_login_code") as send:
-        assert auth_service.request_code(db, "admin@example.test") is False
-        assert send.call_count == 0
+    success = login(AdminLogin(email=settings.admin_email, password="strong-local-password-123"), request)
+    assert success["token_type"] == "bearer"
+    assert decode_access_token(success["access_token"])["sub"] == settings.admin_email
+
+    with pytest.raises(HTTPException) as rejected:
+        login(AdminLogin(email=settings.admin_email, password="incorrect-password"), request)
+    assert rejected.value.status_code == 401
+
+
+def test_admin_password_login_rate_limit():
+    from app.routers.admin.auth import login
+    from app.schemas.auth import AdminLogin
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/admin/auth/login",
+            "query_string": b"",
+            "headers": [],
+            "client": ("198.51.100.21", 12345),
+            "server": ("testserver", 80),
+        }
+    )
+    data = AdminLogin(email="admin@example.com", password="incorrect-password")
+    for _ in range(10):
+        with pytest.raises(HTTPException) as rejected:
+            login(data, request)
+        assert rejected.value.status_code == 401
+    with pytest.raises(HTTPException) as limited:
+        login(data, request)
+    assert limited.value.status_code == 429
 
 
 def test_limiter_returns_429_and_cleans_expired_ip(monkeypatch):

@@ -1,12 +1,13 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-class RequestCode(BaseModel):
+class AdminLogin(BaseModel):
     email: EmailStr
+    password: str = Field(min_length=1, max_length=256)
 
-class VerifyCode(BaseModel):
-    email: EmailStr
-    code: str = Field(pattern=r"^\d{8}$")
+    @field_validator("password", mode="before")
+    @classmethod
+    def validate_password(cls, value):
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("Password is required")
+        return value
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"

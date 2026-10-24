@@ -17,14 +17,16 @@ def _csv(name: str, default: str) -> list[str]:
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "")
     admin_email: str = os.getenv("ADMIN_EMAIL", "")
+    admin_password: str = os.getenv("ADMIN_PASSWORD", "")
     jwt_secret: str = os.getenv("JWT_SECRET", "")
     token_expiry_hours: int = int(os.getenv("TOKEN_EXPIRY_HOURS", "12"))
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     environment: str = os.getenv("ENVIRONMENT", "production").lower()
     allowed_origins: list[str] = None  # type: ignore[assignment]
-    email_api_key: str = os.getenv("EMAIL_API_KEY", "")
-    email_sender: str = os.getenv("EMAIL_SENDER", "")
-    email_provider: str = os.getenv("EMAIL_PROVIDER", "resend").lower()
+    gmail_client_id: str = os.getenv("GMAIL_CLIENT_ID", "")
+    gmail_client_secret: str = os.getenv("GMAIL_CLIENT_SECRET", "")
+    gmail_refresh_token: str = os.getenv("GMAIL_REFRESH_TOKEN", "")
+    gmail_sender: str = os.getenv("GMAIL_SENDER", "")
     cloudinary_cloud_name: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     cloudinary_api_key: str = os.getenv("CLOUDINARY_API_KEY", "")
     cloudinary_api_secret: str = os.getenv("CLOUDINARY_API_SECRET", "")
@@ -44,15 +46,17 @@ class Settings:
         object.__setattr__(self, "enable_docs", enable_docs)
 
     def validate(self) -> None:
-        missing = [key for key, value in (("DATABASE_URL", self.database_url), ("ADMIN_EMAIL", self.admin_email), ("JWT_SECRET", self.jwt_secret)) if not value]
+        missing = [key for key, value in (("DATABASE_URL", self.database_url), ("ADMIN_EMAIL", self.admin_email), ("ADMIN_PASSWORD", self.admin_password), ("JWT_SECRET", self.jwt_secret)) if not value]
         if missing:
             raise RuntimeError("Missing required environment settings: " + ", ".join(missing))
+        if len(self.admin_password) < 16:
+            raise RuntimeError("ADMIN_PASSWORD must contain at least 16 characters")
         if len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must contain at least 32 characters")
         if self.debug and self.environment not in {"local", "development"}:
             raise RuntimeError("DEBUG=true is allowed only in a local or development environment")
         if self.environment == "production":
-            missing_live = [key for key, value in (("ALLOWED_ORIGINS", self.allowed_origins), ("EMAIL_API_KEY", self.email_api_key), ("EMAIL_SENDER", self.email_sender), ("CLOUDINARY_CLOUD_NAME", self.cloudinary_cloud_name), ("CLOUDINARY_API_KEY", self.cloudinary_api_key), ("CLOUDINARY_API_SECRET", self.cloudinary_api_secret)) if not value]
+            missing_live = [key for key, value in (("ALLOWED_ORIGINS", self.allowed_origins), ("CLOUDINARY_CLOUD_NAME", self.cloudinary_cloud_name), ("CLOUDINARY_API_KEY", self.cloudinary_api_key), ("CLOUDINARY_API_SECRET", self.cloudinary_api_secret)) if not value]
             if missing_live:
                 raise RuntimeError("Missing live environment settings: " + ", ".join(missing_live))
 

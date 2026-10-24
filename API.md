@@ -1,6 +1,6 @@
 # Chauhan Properties API
 
-Base URL for local development: `http://localhost:5000`. JSON requests use UTF-8. Admin routes require `Authorization: Bearer <token>` except the two login-code routes.
+Base URL for local development: `http://localhost:5000`. JSON requests use UTF-8. Admin routes require `Authorization: Bearer <token>` except the login route.
 
 ## Common rules
 
@@ -15,8 +15,7 @@ Base URL for local development: `http://localhost:5000`. JSON requests use UTF-8
 
 | Method and path | Caller | Input | Success |
 |---|---|---|---|
-| `POST /api/admin/auth/request-code` | Public | `{ "email": "admin@example.com" }` | Always returns `200 {"message":"If this email is allowed, a code has been sent."}` for email-based decisions. Codes are 8 digits, expire in 10 minutes, and are limited to 3 requests/hour and 10/day per admin email; old unused codes are cancelled only after email delivery succeeds. Request IPs are limited to 5/hour (429). In local `DEBUG=true`, the code is printed to the server terminal. |
-| `POST /api/admin/auth/verify-code` | Public | `{ "email": "admin@example.com", "code": "12345678" }` | `200 {"access_token":"…","token_type":"bearer"}`. Invalid, expired, or exhausted codes return 400. Verification IPs are limited to 10/hour (429). |
+| `POST /api/admin/auth/login` | Public | `{ "email": "admin@example.com", "password": "…" }` | `200 {"access_token":"…","token_type":"bearer"}`. The email must match `ADMIN_EMAIL`, and the password must match server-only `ADMIN_PASSWORD`. The endpoint allows 10 attempts per visitor IP every 15 minutes; further attempts return 429. |
 | `GET /api/admin/auth/me` | Admin | Bearer token | `{ "email": "…" }` |
 
 ## Properties
