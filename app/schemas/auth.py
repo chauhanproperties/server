@@ -10,4 +10,3 @@ class AdminLogin(BaseModel):
         if isinstance(value, str) and not value.strip():
             raise ValueError("Password is required")
         return value
-

@@ -52,4 +52,3 @@ def send_email(to_email: str, subject: str, text: str) -> None:
         raise RuntimeError(f"Gmail email request failed (HTTP {exc.code}): {detail}") from exc
     except (URLError, TimeoutError) as exc:
         raise RuntimeError("Could not reach Google's email service.") from exc
-

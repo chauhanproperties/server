@@ -36,5 +36,3 @@ def db(test_engine):
         if transaction.is_active:
             transaction.rollback()
         connection.close()
-
-
